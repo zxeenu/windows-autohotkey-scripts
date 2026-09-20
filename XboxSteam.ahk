@@ -2,27 +2,40 @@
 #SingleInstance Force
 Persistent
 
-; Check the controller every 50 ms
-SetTimer(CheckXboxButton, 50)
+; Ordinal 100 = XInputGetStateEx, the only XInput call that reports the Guide button
+hXInput := DllCall("LoadLibrary", "Str", "xinput1_4.dll", "Ptr")
+XInputGetStateEx := DllCall("GetProcAddress", "Ptr", hXInput, "Ptr", 100, "Ptr")
+state := Buffer(16, 0)
 
-wasPressed := false
+guideHeld := false
+chorded := false
 
-CheckXboxButton() {
-    global wasPressed
+SetTimer(CheckGuide, 20)
 
-    ; Xbox controllers expose the Guide button as button 11
-    pressed := GetKeyState("Joy11")
+CheckGuide() {
+    global guideHeld, chorded
 
-    ; Only trigger once per press
-    if (pressed && !wasPressed) {
-        OpenSteam()
+    buttons := 0, lx := 0, ly := 0
+    Loop 4 {  ; controller slots 0-3
+        if DllCall(XInputGetStateEx, "UInt", A_Index - 1, "Ptr", state, "UInt") = 0 {
+            buttons := NumGet(state, 4, "UShort")
+            lx := NumGet(state, 8, "Short")
+            ly := NumGet(state, 10, "Short")
+            break
+        }
     }
 
-    wasPressed := pressed
-}
+    isDown := (buttons & 0x0400) != 0
+    others := (buttons & ~0x0400) != 0 || Abs(lx) > 16000 || Abs(ly) > 16000
 
-OpenSteam() {
-    ; Launch Steam Big Picture.
-    ; If Steam is already running, Steam handles the URI.
-    Run("steam://open/bigpicture")
+    if isDown && !guideHeld
+        chorded := false          ; new Guide press, reset
+    if isDown && others
+        chorded := true           ; something else was used while holding Guide
+
+    ; Open Big Picture on release, but only if Guide wasn't used as a chord
+    if !isDown && guideHeld && !chorded
+        Run("steam://open/bigpicture")
+
+    guideHeld := isDown
 }
