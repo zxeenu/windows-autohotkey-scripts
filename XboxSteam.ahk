@@ -35,7 +35,15 @@ CheckGuide() {
 
     ; Open Big Picture on release, but only if Guide wasn't used as a chord
     if !isDown && guideHeld && !chorded
-        Run("steam://open/bigpicture")
+        OpenBigPicture()
 
     guideHeld := isDown
+}
+
+OpenBigPicture() {
+    ; Steam already running (desktop, Big Picture, or tray): do nothing
+    if ProcessExist("steam.exe")
+        return
+
+    Run("steam://open/bigpicture")
 }
