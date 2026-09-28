@@ -2,6 +2,16 @@
 #SingleInstance Force
 Persistent
 
+logFile := FileOpen(A_ScriptDir "\log.txt", "a")
+
+Log(msg) {
+    global logFile
+    logFile.WriteLine(FormatTime(, "yyyy-MM-dd HH:mm:ss") " - " msg)
+    logFile.Read(0)  ; flush without closing
+}
+
+Log("=== Script started ===")
+
 ; ---- XInput setup (Xbox-mode / XInput-mode controllers) ----
 hXInput := DllCall("LoadLibrary", "Str", "xinput1_4.dll", "Ptr")
 XInputGetStateEx := DllCall("GetProcAddress", "Ptr", hXInput, "Ptr", 100, "Ptr")
@@ -11,7 +21,6 @@ xGuideHeld := [false, false, false, false]
 xChorded  := [false, false, false, false]
 
 ; ---- DirectInput setup (Switch-mode 8BitDo, or any HID pad) ----
-; Map each entry to { joyId: <AHK joystick number>, homeBtn: <button number> }
 diPads := [ { joyId: 3, homeBtn: 13 } ]
 diGuideHeld := Map()
 diChorded  := Map()
@@ -38,13 +47,23 @@ CheckGuide() {
         isDown := (buttons & 0x0400) != 0
         others := (buttons & ~0x0400) != 0 || Abs(lx) > 16000 || Abs(ly) > 16000
 
-        if isDown && !xGuideHeld[slot]
+        if isDown && !xGuideHeld[slot] {
             xChorded[slot] := false
-        if isDown && others
+            Log("XInput slot " (slot - 1) ": Guide pressed")
+        }
+        if isDown && others && !xChorded[slot] {
             xChorded[slot] := true
+            Log("XInput slot " (slot - 1) ": chorded (other input while held) - launch cancelled")
+        }
 
-        if !isDown && xGuideHeld[slot] && !xChorded[slot]
-            OpenBigPicture()
+        if !isDown && xGuideHeld[slot] {
+            if !xChorded[slot] {
+                Log("XInput slot " (slot - 1) ": Guide released, not chorded - triggering launch")
+                OpenBigPicture()
+            } else {
+                Log("XInput slot " (slot - 1) ": Guide released, was chorded - no launch")
+            }
+        }
 
         xGuideHeld[slot] := isDown
     }
@@ -54,7 +73,7 @@ CheckGuide() {
         id := pad.joyId
         name := GetKeyState(id "JoyName")
         if (name = "")
-            continue  ; not connected right now
+            continue
 
         isDown := GetKeyState(id "Joy" pad.homeBtn)
 
@@ -67,23 +86,36 @@ CheckGuide() {
             }
         }
         x := GetKeyState(id "JoyX"), y := GetKeyState(id "JoyY")
-        if (Abs(x - 50) > 25 || Abs(y - 50) > 25)  ; joystick axes report ~0-100, centered ~50
+        if (Abs(x - 50) > 25 || Abs(y - 50) > 25)
             others := true
 
-        if isDown && !diGuideHeld[id]
+        if isDown && !diGuideHeld[id] {
             diChorded[id] := false
-        if isDown && others
+            Log("DirectInput joy" id ": Home pressed")
+        }
+        if isDown && others && !diChorded[id] {
             diChorded[id] := true
+            Log("DirectInput joy" id ": chorded (other input while held) - launch cancelled")
+        }
 
-        if !isDown && diGuideHeld[id] && !diChorded[id]
-            OpenBigPicture()
+        if !isDown && diGuideHeld[id] {
+            if !diChorded[id] {
+                Log("DirectInput joy" id ": Home released, not chorded - triggering launch")
+                OpenBigPicture()
+            } else {
+                Log("DirectInput joy" id ": Home released, was chorded - no launch")
+            }
+        }
 
         diGuideHeld[id] := isDown
     }
 }
 
 OpenBigPicture() {
-    if ProcessExist("steam.exe")
+    if ProcessExist("steam.exe") {
+        Log("Launch requested - Steam already running, skipped")
         return
+    }
+    Log("Launch requested - Steam not running, launching Big Picture")
     Run("steam://open/bigpicture")
 }
